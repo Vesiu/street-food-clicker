@@ -174,13 +174,15 @@ header h1 {
   background-color: #3b82f6;
   color: #fff;
   border: none;
-  padding: 0.6rem 1rem;
+  padding: 0.6rem 0.9rem;
   border-radius: 0.375rem;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  white-space: nowrap; /* Empêche le texte de sauter à la ligne */
+  flex-shrink: 0;      /* Empêche le bouton de s'écraser */
   transition: opacity 0.2s, background-color 0.2s;
 }
 
