@@ -1,58 +1,201 @@
+/* --- VARIABLES & DESIGN SYSTEM --- */
+:root {
+  /* Couleurs de fond et texte */
+  --bg-color: #101012;       /* Noir profond tendance */
+  --card-color: #18181b;     /* Gris foncé pour les conteneurs */
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  
+  /* Couleurs d'accentuation (Street Food) */
+  --color-accent: #facc15;   /* Jaune frite/or pour le score */
+  --color-action: #e11d48;   /* Rouge ketchup/piment pour le bouton principal */
+  --color-action-hover: #be123c;
+  
+  /* Ombres et arrondis */
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+  --shadow-btn: 0 4px 14px rgba(225, 29, 72, 0.5);
+  --radius-full: 9999px;
+  --radius-lg: 1rem;
+}
+
+/* --- RESET & BASES --- */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-font-smoothing: antialiased; /* Police plus lisse sur macOS */
 }
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
-  background-color: #121214;
-  color: #f4f4f5;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  padding: 1rem;
 }
 
+/* --- LE CONTENEUR PRINCIPAL --- */
 .game-container {
   text-align: center;
+  width: 100%;
+  max-width: 480px; /* Évite que ça bave sur grand écran */
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 3rem; /* Gros espace entre les sections */
+  padding: 2.5rem;
+  background-color: var(--card-color);
+  border-radius: var(--radius-lg);
+  border: 1px solid #27272a; /* Bordure discrète */
+  box-shadow: var(--shadow-lg);
+}
+
+/* --- HEADER --- */
+header h1 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.025em; /* Typo plus serrée, plus moderne */
 }
 
 .subtitle {
-  color: #a1a1aa;
-  font-size: 0.9rem;
-  margin-top: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-top: 0.4rem;
 }
 
+/* --- TABLEAU DE BORD (Le Score) --- */
 .score-board {
-  font-size: 3.5rem;
+  padding: 1rem;
+}
+
+#money-display {
+  font-size: 4rem; /* Très gros pour la lisibilité */
   font-weight: 800;
-  color: #facc15;
+  color: var(--color-accent);
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums; /* Évite que le chiffre tremble en augmentant */
 }
 
 .currency {
-  font-size: 2rem;
-  color: #e4e4e7;
+  font-size: 2.5rem;
+  color: var(--text-secondary);
+  font-weight: 300;
+  margin-left: 0.25rem;
+}
+
+/* --- ZONE D'ACTION --- */
+.action-zone {
+  display: flex;
+  justify-content: center;
 }
 
 #serve-btn {
   font-size: 1.25rem;
   font-weight: 700;
-  padding: 1rem 2rem;
-  background-color: #e11d48;
+  padding: 1.1rem 2.5rem;
+  background-color: var(--color-action);
   color: #ffffff;
   border: none;
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(225, 29, 72, 0.4);
-  transition: transform 0.08s ease, background-color 0.2s;
+  box-shadow: var(--shadow-btn);
+  
+  /* Transitions fluides */
+  transition: transform 0.1s ease, background-color 0.2s, box-shadow 0.2s;
+  
+  /* Évite la sélection du texte sur mobile lors des spams */
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Effets interactifs */
+#serve-btn:hover {
+  background-color: var(--color-action-hover);
+  transform: translateY(-2px); /* Léger saut vers le haut */
 }
 
 #serve-btn:active {
-  transform: scale(0.95);
-  background-color: #be123c;
+  transform: translateY(1px) scale(0.97); /* S'enfonce au clic */
+  box-shadow: 0 2px 5px rgba(225, 29, 72, 0.3);
+}
+
+/* Revenu passif sous le score */
+.cps-text {
+  font-size: 1.1rem;
+  color: #22c55e; /* Vert positif */
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+/* Zone d'achats */
+.upgrades-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+}
+
+.upgrades-zone h2 {
+  font-size: 1.2rem;
+  color: #a1a1aa;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.producers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.producer-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #27272a;
+  padding: 0.8rem 1rem;
+  border-radius: 0.5rem;
+}
+
+.producer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.producer-gain {
+  font-size: 0.85rem;
+  color: #a1a1aa;
+}
+
+.buy-btn {
+  background-color: #3b82f6;
+  color: #fff;
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+.buy-btn:hover:not(:disabled) {
+  background-color: #2563eb;
+}
+
+.buy-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.buy-btn .count {
+  background-color: rgba(0, 0, 0, 0.25);
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
 }
