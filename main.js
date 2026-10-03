@@ -1,10 +1,31 @@
-// --- 1. MODÈLE DE DONNÉES (Le Cerveau) ---
+// --- 1. MODÈLE DE DONNÉES ---
 const STORAGE_KEY = "street_food_save_v1";
 
 const defaultState = {
   money: 0,
-  clickPower: 1,
+  baseClickPower: 1,
   lastTick: Date.now(),
+  upgrades: [
+    {
+      id: "crispy_fries",
+      name: "Sel de Guérande",
+      description: "Le clic rapporte 2× plus",
+      cost: 50,
+      bought: false,
+      type: "click",
+      multiplier: 2
+    },
+    {
+      id: "mayo_bucket",
+      name: "Fût de mayo géant",
+      description: "Les distributeurs sont 2× plus efficaces",
+      cost: 200,
+      bought: false,
+      type: "building",
+      targetId: "sauce_dispenser",
+      multiplier: 2
+    }
+  ],
   producers: [
     {
       id: "sauce_dispenser",
@@ -25,17 +46,38 @@ const defaultState = {
   ]
 };
 
-// Charge la sauvegarde existante ou prend l'état par défaut
 let state = loadGame() || defaultState;
 
 // --- 2. CALCULS MÉTIER ---
 
-function getCost(producer) {
-  return Math.floor(producer.baseCost * Math.pow(producer.costMultiplier, producer.count));
+// Calcule la puissance de clic avec les upgrades
+function getClickPower() {
+  let power = state.baseClickPower;
+  state.upgrades.forEach(u => {
+    if (u.bought && u.type === "click") {
+      power *= u.multiplier;
+    }
+  });
+  return power;
+}
+
+// Calcule le revenu d'un bâtiment spécifique avec ses upgrades
+function getProducerIncome(producer) {
+  let income = producer.incomePerSec;
+  state.upgrades.forEach(u => {
+    if (u.bought && u.type === "building" && u.targetId === producer.id) {
+      income *= u.multiplier;
+    }
+  });
+  return income;
 }
 
 function getIncomePerSecond() {
-  return state.producers.reduce((total, p) => total + (p.count * p.incomePerSec), 0);
+  return state.producers.reduce((total, p) => total + (p.count * getProducerIncome(p)), 0);
+}
+
+function getCost(producer) {
+  return Math.floor(producer.baseCost * Math.pow(producer.costMultiplier, producer.count));
 }
 
 function buyProducer(producerId) {
@@ -50,25 +92,35 @@ function buyProducer(producerId) {
   }
 }
 
-function handleClick() {
-  state.money += state.clickPower;
+function buyUpgrade(upgradeId) {
+  const upgrade = state.upgrades.find(u => u.id === upgradeId);
+  if (!upgrade || upgrade.bought) return;
+
+  if (state.money >= upgrade.cost) {
+    state.money -= upgrade.cost;
+    upgrade.bought = true;
+    saveGame();
+    renderUpgrades();
+  }
 }
 
-// --- 3. BOUCLE DE JEU (Delta-time fluide) ---
+function handleClick() {
+  state.money += getClickPower();
+}
+
+// --- 3. BOUCLE DE JEU ---
 function gameLoop() {
   const now = Date.now();
-  // Temps écoulé depuis la dernière frame, converti en secondes
   const dt = (now - state.lastTick) / 1000;
   state.lastTick = now;
 
-  // Gain continu basé sur le temps réel écoulé
   state.money += getIncomePerSecond() * dt;
 
   render();
   requestAnimationFrame(gameLoop);
 }
 
-// --- 4. SAUVEGARDE & CHARGEMENT (localStorage) ---
+// --- 4. SAUVEGARDE & PERSISTANCE ---
 function saveGame() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
@@ -79,67 +131,113 @@ function loadGame() {
 
   try {
     const parsed = JSON.parse(saved);
-    // Gestion du gain hors-ligne : calcule le temps passé hors du jeu
     const offlineSeconds = (Date.now() - (parsed.lastTick || Date.now())) / 1000;
     
-    // Recalcule le revenu avec les données chargées
-    const offlineIncomeRate = parsed.producers.reduce((sum, p) => sum + (p.count * p.incomePerSec), 0);
-    parsed.money += offlineIncomeRate * offlineSeconds;
+    // Calcul hors-ligne avec multiplicateurs
+    let incomeRate = 0;
+    parsed.producers.forEach(p => {
+      let unitIncome = p.incomePerSec;
+      parsed.upgrades?.forEach(u => {
+        if (u.bought && u.type === "building" && u.targetId === p.id) {
+          unitIncome *= u.multiplier;
+        }
+      });
+      incomeRate += p.count * unitIncome;
+    });
+
+    parsed.money += incomeRate * offlineSeconds;
     parsed.lastTick = Date.now();
     return parsed;
   } catch (e) {
-    console.error("Erreur au chargement de la sauvegarde :", e);
+    console.error("Erreur de sauvegarde :", e);
     return null;
   }
 }
 
-// Sauvegarde automatique toutes les 5 secondes
 setInterval(saveGame, 5000);
 
-// --- 5. INTERFACE UTILISATEUR (Les Yeux) ---
+// --- 5. INTERFACE UTILISATEUR ---
 const moneyDisplay = document.getElementById("money-display");
 const cpsDisplay = document.getElementById("cps-display");
 const serveButton = document.getElementById("serve-btn");
 const producersList = document.getElementById("producers-list");
+const shopUpgradesList = document.getElementById("shop-upgrades-list");
+
+function renderUpgrades() {
+  shopUpgradesList.innerHTML = "";
+
+  state.upgrades.forEach(u => {
+    // Si déjà acheté, on peut masquer ou marquer comme possédé
+    if (u.bought) return;
+
+    const card = document.createElement("div");
+    card.className = "upgrade-card";
+    card.id = `upgrade-${u.id}`;
+
+    card.innerHTML = `
+      <div>
+        <strong>${u.name}</strong>
+        <p class="upgrade-desc">${u.description}</p>
+      </div>
+      <button class="buy-upgrade-btn" id="btn-up-${u.id}">
+        ${u.cost} €
+      </button>
+    `;
+
+    card.querySelector("button").addEventListener("click", () => buyUpgrade(u.id));
+    shopUpgradesList.appendChild(card);
+  });
+}
 
 function createProducerCards() {
   producersList.innerHTML = "";
 
-  state.producers.forEach(producer => {
+  state.producers.forEach(p => {
     const card = document.createElement("div");
     card.className = "producer-card";
-    card.id = `card-${producer.id}`;
+    card.id = `card-${p.id}`;
 
     card.innerHTML = `
       <div class="producer-info">
-        <strong>${producer.name}</strong>
-        <span class="producer-gain">+${producer.incomePerSec} €/s</span>
+        <strong>${p.name}</strong>
+        <span class="producer-gain" id="gain-${p.id}">+${getProducerIncome(p)} €/s</span>
       </div>
-      <button class="buy-btn" id="btn-${producer.id}">
-        Acheter (<span class="cost">${getCost(producer)}</span> €)
-        <span class="count">x${producer.count}</span>
+      <button class="buy-btn" id="btn-${p.id}">
+        Acheter (<span class="cost">${getCost(p)}</span> €)
+        <span class="count">x${p.count}</span>
       </button>
     `;
 
-    card.querySelector("button").addEventListener("click", () => buyProducer(producer.id));
+    card.querySelector("button").addEventListener("click", () => buyProducer(p.id));
     producersList.appendChild(card);
   });
 }
 
 function render() {
-  // Affiche l'entier pour garder un affichage propre
-  moneyDisplay.textContent = Math.floor(state.money);
-  cpsDisplay.textContent = `+${getIncomePerSecond()} € / sec`;
+moneyDisplay.textContent = formatNumber(state.money);
+cpsDisplay.textContent = `+${formatNumber(getIncomePerSecond())} € / sec`;
+  serveButton.textContent = `🍟 Servir (+${getClickPower()} €)`;
 
-  state.producers.forEach(producer => {
-    const cost = getCost(producer);
-    const card = document.getElementById(`card-${producer.id}`);
-    const btn = document.getElementById(`btn-${producer.id}`);
+  // Mise à jour de l'état des générateurs
+  state.producers.forEach(p => {
+    const cost = getCost(p);
+    const card = document.getElementById(`card-${p.id}`);
+    const btn = document.getElementById(`btn-${p.id}`);
+    const gainLabel = document.getElementById(`gain-${p.id}`);
 
     if (card && btn) {
       card.querySelector(".cost").textContent = cost;
-      card.querySelector(".count").textContent = `x${producer.count}`;
+      card.querySelector(".count").textContent = `x${p.count}`;
+      gainLabel.textContent = `+${getProducerIncome(p)} €/s`;
       btn.disabled = state.money < cost;
+    }
+  });
+
+  // Mise à jour de l'accessibilité des boutons d'upgrades
+  state.upgrades.forEach(u => {
+    const btn = document.getElementById(`btn-up-${u.id}`);
+    if (btn) {
+      btn.disabled = state.money < u.cost;
     }
   });
 }
@@ -147,5 +245,23 @@ function render() {
 // --- INITIALISATION ---
 serveButton.addEventListener("click", handleClick);
 createProducerCards();
+renderUpgrades();
 state.lastTick = Date.now();
 requestAnimationFrame(gameLoop);
+
+function formatNumber(num) {
+  if (num < 1000) return Math.floor(num).toString();
+  
+  const suffixes = [
+    { value: 1e12, symbol: " T" },
+    { value: 1e9, symbol: " Md" },
+    { value: 1e6, symbol: " M" },
+    { value: 1e3, symbol: " k" }
+  ];
+
+  const item = suffixes.find(s => num >= s.value);
+  if (!item) return Math.floor(num).toString();
+
+  // Affiche 2 décimales propres : ex. 1.25 M
+  return (num / item.value).toFixed(2).replace(".", ",") + item.symbol;
+}
