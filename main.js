@@ -1,8 +1,9 @@
-// --- 1. MODÈLE DE DONNÉES ---
+// --- 1. MODÈLE DE DONNÉES (Le Cerveau) ---
 const STORAGE_KEY = "street_food_save_v1";
 
 const defaultState = {
   money: 0,
+  totalMoneyEarned: 0,
   baseClickPower: 1,
   lastTick: Date.now(),
   upgrades: [
@@ -11,6 +12,7 @@ const defaultState = {
       name: "Sel de Guérande",
       description: "Le clic rapporte 2× plus",
       cost: 50,
+      unlockAt: 20,
       bought: false,
       type: "click",
       multiplier: 2
@@ -19,10 +21,33 @@ const defaultState = {
       id: "mayo_bucket",
       name: "Fût de mayo géant",
       description: "Les distributeurs sont 2× plus efficaces",
-      cost: 200,
+      cost: 250,
+      unlockAt: 120,
       bought: false,
       type: "building",
       targetId: "sauce_dispenser",
+      multiplier: 2
+    },
+    {
+      id: "potato_terroir",
+      name: "Patates de terroir",
+      description: "Les coupe-frites sont 2× plus efficaces",
+      cost: 1500,
+      unlockAt: 800,
+      bought: false,
+      type: "building",
+      targetId: "potato_cutter",
+      multiplier: 2
+    },
+    {
+      id: "pro_oil",
+      name: "Huile de compèt'",
+      description: "Les friteuses sont 2× plus efficaces",
+      cost: 8000,
+      unlockAt: 4000,
+      bought: false,
+      type: "building",
+      targetId: "double_fryer",
       multiplier: 2
     }
   ],
@@ -33,7 +58,8 @@ const defaultState = {
       count: 0,
       baseCost: 15,
       costMultiplier: 1.15,
-      incomePerSec: 1
+      incomePerSec: 1,
+      unlockAt: 0
     },
     {
       id: "potato_cutter",
@@ -41,16 +67,56 @@ const defaultState = {
       count: 0,
       baseCost: 100,
       costMultiplier: 1.15,
-      incomePerSec: 5
+      incomePerSec: 5,
+      unlockAt: 40
+    },
+    {
+      id: "double_fryer",
+      name: "Friteuse double bac",
+      count: 0,
+      baseCost: 1100,
+      costMultiplier: 1.15,
+      incomePerSec: 32,
+      unlockAt: 500
+    },
+    {
+      id: "student_helper",
+      name: "Pote étudiant en renfort",
+      count: 0,
+      baseCost: 12000,
+      costMultiplier: 1.15,
+      incomePerSec: 260,
+      unlockAt: 5000
+    },
+    {
+      id: "speaker",
+      name: "Enceinte Bluetooth",
+      count: 0,
+      baseCost: 130000,
+      costMultiplier: 1.15,
+      incomePerSec: 1400,
+      unlockAt: 60000
     }
   ]
 };
 
 let state = loadGame() || defaultState;
 
-// --- 2. CALCULS MÉTIER ---
+// --- 2. CALCULS & UTILITAIRES ---
 
-// Calcule la puissance de clic avec les upgrades
+function formatNumber(num) {
+  if (num < 1000) return Math.floor(num).toString();
+  const suffixes = [
+    { value: 1e12, symbol: " T" },
+    { value: 1e9, symbol: " Md" },
+    { value: 1e6, symbol: " M" },
+    { value: 1e3, symbol: " k" }
+  ];
+  const item = suffixes.find(s => num >= s.value);
+  if (!item) return Math.floor(num).toString();
+  return (num / item.value).toFixed(2).replace(".", ",") + item.symbol;
+}
+
 function getClickPower() {
   let power = state.baseClickPower;
   state.upgrades.forEach(u => {
@@ -61,7 +127,6 @@ function getClickPower() {
   return power;
 }
 
-// Calcule le revenu d'un bâtiment spécifique avec ses upgrades
 function getProducerIncome(producer) {
   let income = producer.incomePerSec;
   state.upgrades.forEach(u => {
@@ -89,6 +154,7 @@ function buyProducer(producerId) {
     state.money -= cost;
     producer.count += 1;
     saveGame();
+    renderProducers();
   }
 }
 
@@ -101,26 +167,34 @@ function buyUpgrade(upgradeId) {
     upgrade.bought = true;
     saveGame();
     renderUpgrades();
+    renderProducers();
   }
 }
 
 function handleClick() {
-  state.money += getClickPower();
+  const gain = getClickPower();
+  state.money += gain;
+  state.totalMoneyEarned += gain;
 }
 
-// --- 3. BOUCLE DE JEU ---
+// --- 3. BOUCLE DE JEU (Delta-Time) ---
 function gameLoop() {
   const now = Date.now();
   const dt = (now - state.lastTick) / 1000;
   state.lastTick = now;
 
-  state.money += getIncomePerSecond() * dt;
+  const passiveGain = getIncomePerSecond() * dt;
+  state.money += passiveGain;
+  state.totalMoneyEarned += passiveGain;
+
+  // Vérifie si de nouveaux éléments doivent apparaître à l'écran
+  checkNewUnlocks();
 
   render();
   requestAnimationFrame(gameLoop);
 }
 
-// --- 4. SAUVEGARDE & PERSISTANCE ---
+// --- 4. PERSISTANCE ---
 function saveGame() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
@@ -128,14 +202,12 @@ function saveGame() {
 function loadGame() {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (!saved) return null;
-
   try {
     const parsed = JSON.parse(saved);
     const offlineSeconds = (Date.now() - (parsed.lastTick || Date.now())) / 1000;
     
-    // Calcul hors-ligne avec multiplicateurs
     let incomeRate = 0;
-    parsed.producers.forEach(p => {
+    parsed.producers?.forEach(p => {
       let unitIncome = p.incomePerSec;
       parsed.upgrades?.forEach(u => {
         if (u.bought && u.type === "building" && u.targetId === p.id) {
@@ -145,7 +217,9 @@ function loadGame() {
       incomeRate += p.count * unitIncome;
     });
 
-    parsed.money += incomeRate * offlineSeconds;
+    const offlineGain = incomeRate * offlineSeconds;
+    parsed.money += offlineGain;
+    parsed.totalMoneyEarned = (parsed.totalMoneyEarned || parsed.money) + offlineGain;
     parsed.lastTick = Date.now();
     return parsed;
   } catch (e) {
@@ -156,19 +230,25 @@ function loadGame() {
 
 setInterval(saveGame, 5000);
 
-// --- 5. INTERFACE UTILISATEUR ---
+// --- 5. INTERFACE UTILISATEUR & GESTION DU MASQUAGE ---
 const moneyDisplay = document.getElementById("money-display");
 const cpsDisplay = document.getElementById("cps-display");
 const serveButton = document.getElementById("serve-btn");
 const producersList = document.getElementById("producers-list");
 const shopUpgradesList = document.getElementById("shop-upgrades-list");
 
+const slotSauce = document.getElementById("slot-sauce");
+const slotCutter = document.getElementById("slot-cutter");
+const fryerPot = document.querySelector(".fryer-pot");
+const slotStudent = document.getElementById("slot-student");
+
+// Rend uniquement les améliorations débloquées et non achetées
 function renderUpgrades() {
   shopUpgradesList.innerHTML = "";
 
   state.upgrades.forEach(u => {
-    // Si déjà acheté, on peut masquer ou marquer comme possédé
     if (u.bought) return;
+    if (state.totalMoneyEarned < u.unlockAt) return; // Reste masqué
 
     const card = document.createElement("div");
     card.className = "upgrade-card";
@@ -180,7 +260,7 @@ function renderUpgrades() {
         <p class="upgrade-desc">${u.description}</p>
       </div>
       <button class="buy-upgrade-btn" id="btn-up-${u.id}">
-        ${u.cost} €
+        ${formatNumber(u.cost)} €
       </button>
     `;
 
@@ -189,10 +269,13 @@ function renderUpgrades() {
   });
 }
 
-function createProducerCards() {
+// Rend uniquement les équipements débloqués
+function renderProducers() {
   producersList.innerHTML = "";
 
   state.producers.forEach(p => {
+    if (state.totalMoneyEarned < p.unlockAt) return; // Reste masqué
+
     const card = document.createElement("div");
     card.className = "producer-card";
     card.id = `card-${p.id}`;
@@ -200,10 +283,10 @@ function createProducerCards() {
     card.innerHTML = `
       <div class="producer-info">
         <strong>${p.name}</strong>
-        <span class="producer-gain" id="gain-${p.id}">+${getProducerIncome(p)} €/s</span>
+        <span class="producer-gain" id="gain-${p.id}">+${formatNumber(getProducerIncome(p))} €/s</span>
       </div>
       <button class="buy-btn" id="btn-${p.id}">
-        Acheter (<span class="cost">${getCost(p)}</span> €)
+        Acheter (<span class="cost">${formatNumber(getCost(p))}</span> €)
         <span class="count">x${p.count}</span>
       </button>
     `;
@@ -213,12 +296,28 @@ function createProducerCards() {
   });
 }
 
-function render() {
-moneyDisplay.textContent = formatNumber(state.money);
-cpsDisplay.textContent = `+${formatNumber(getIncomePerSecond())} € / sec`;
-  serveButton.textContent = `🍟 Servir (+${getClickPower()} €)`;
+let lastUnlockedProducerCount = 0;
+let lastUnlockedUpgradeCount = 0;
 
-  // Mise à jour de l'état des générateurs
+function checkNewUnlocks() {
+  const visibleProducers = state.producers.filter(p => state.totalMoneyEarned >= p.unlockAt).length;
+  const visibleUpgrades = state.upgrades.filter(u => !u.bought && state.totalMoneyEarned >= u.unlockAt).length;
+
+  if (visibleProducers !== lastUnlockedProducerCount) {
+    lastUnlockedProducerCount = visibleProducers;
+    renderProducers();
+  }
+  if (visibleUpgrades !== lastUnlockedUpgradeCount) {
+    lastUnlockedUpgradeCount = visibleUpgrades;
+    renderUpgrades();
+  }
+}
+
+function render() {
+  moneyDisplay.textContent = formatNumber(state.money);
+  cpsDisplay.textContent = `+${formatNumber(getIncomePerSecond())} € / sec`;
+  serveButton.textContent = `🍟 Servir (+${formatNumber(getClickPower())} €)`;
+
   state.producers.forEach(p => {
     const cost = getCost(p);
     const card = document.getElementById(`card-${p.id}`);
@@ -226,42 +325,46 @@ cpsDisplay.textContent = `+${formatNumber(getIncomePerSecond())} € / sec`;
     const gainLabel = document.getElementById(`gain-${p.id}`);
 
     if (card && btn) {
-      card.querySelector(".cost").textContent = cost;
+      card.querySelector(".cost").textContent = formatNumber(cost);
       card.querySelector(".count").textContent = `x${p.count}`;
-      gainLabel.textContent = `+${getProducerIncome(p)} €/s`;
+      if (gainLabel) gainLabel.textContent = `+${formatNumber(getProducerIncome(p))} €/s`;
       btn.disabled = state.money < cost;
     }
   });
 
-  // Mise à jour de l'accessibilité des boutons d'upgrades
   state.upgrades.forEach(u => {
     const btn = document.getElementById(`btn-up-${u.id}`);
     if (btn) {
       btn.disabled = state.money < u.cost;
     }
   });
+
+  // --- MISE À JOUR DE LA VITRINE EN DIRECT ---
+  const sauceCount = state.producers.find(p => p.id === "sauce_dispenser")?.count || 0;
+  const cutterCount = state.producers.find(p => p.id === "potato_cutter")?.count || 0;
+  const fryerCount = state.producers.find(p => p.id === "double_fryer")?.count || 0;
+  const studentCount = state.producers.find(p => p.id === "student_helper")?.count || 0;
+
+  if (slotSauce) {
+    slotSauce.textContent = "🧴";
+    slotSauce.classList.toggle("active", sauceCount > 0);
+  }
+  if (slotCutter) {
+    slotCutter.textContent = "🥔";
+    slotCutter.classList.toggle("active", cutterCount > 0);
+  }
+  if (fryerPot) {
+    fryerPot.classList.toggle("cooking", fryerCount > 0);
+  }
+  if (slotStudent) {
+    slotStudent.textContent = studentCount > 0 ? `🧑‍🍳 × ${studentCount}` : "";
+    slotStudent.classList.toggle("active", studentCount > 0);
+  }
 }
 
 // --- INITIALISATION ---
 serveButton.addEventListener("click", handleClick);
-createProducerCards();
+renderProducers();
 renderUpgrades();
 state.lastTick = Date.now();
 requestAnimationFrame(gameLoop);
-
-function formatNumber(num) {
-  if (num < 1000) return Math.floor(num).toString();
-  
-  const suffixes = [
-    { value: 1e12, symbol: " T" },
-    { value: 1e9, symbol: " Md" },
-    { value: 1e6, symbol: " M" },
-    { value: 1e3, symbol: " k" }
-  ];
-
-  const item = suffixes.find(s => num >= s.value);
-  if (!item) return Math.floor(num).toString();
-
-  // Affiche 2 décimales propres : ex. 1.25 M
-  return (num / item.value).toFixed(2).replace(".", ",") + item.symbol;
-}
