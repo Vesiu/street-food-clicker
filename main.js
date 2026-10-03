@@ -1,7 +1,10 @@
-// --- 1. LE CERVEAU (Modèle de données) ---
-const state = {
+// --- 1. MODÈLE DE DONNÉES (Le Cerveau) ---
+const STORAGE_KEY = "street_food_save_v1";
+
+const defaultState = {
   money: 0,
   clickPower: 1,
+  lastTick: Date.now(),
   producers: [
     {
       id: "sauce_dispenser",
@@ -22,19 +25,19 @@ const state = {
   ]
 };
 
+// Charge la sauvegarde existante ou prend l'état par défaut
+let state = loadGame() || defaultState;
+
 // --- 2. CALCULS MÉTIER ---
 
-// Calcule le prix actuel d'un équipement : base * 1.15^quantité
 function getCost(producer) {
   return Math.floor(producer.baseCost * Math.pow(producer.costMultiplier, producer.count));
 }
 
-// Calcule les gains totaux par seconde
 function getIncomePerSecond() {
   return state.producers.reduce((total, p) => total + (p.count * p.incomePerSec), 0);
 }
 
-// Action d'achat
 function buyProducer(producerId) {
   const producer = state.producers.find(p => p.id === producerId);
   if (!producer) return;
@@ -43,29 +46,62 @@ function buyProducer(producerId) {
   if (state.money >= cost) {
     state.money -= cost;
     producer.count += 1;
-    render();
+    saveGame();
   }
 }
 
-// Action du clic principal
 function handleClick() {
   state.money += state.clickPower;
-  render();
 }
 
-// Boucle de jeu : s'exécute chaque seconde (1000 ms)
+// --- 3. BOUCLE DE JEU (Delta-time fluide) ---
 function gameLoop() {
-  state.money += getIncomePerSecond();
+  const now = Date.now();
+  // Temps écoulé depuis la dernière frame, converti en secondes
+  const dt = (now - state.lastTick) / 1000;
+  state.lastTick = now;
+
+  // Gain continu basé sur le temps réel écoulé
+  state.money += getIncomePerSecond() * dt;
+
   render();
+  requestAnimationFrame(gameLoop);
 }
 
-// --- 3. LES YEUX (Affichage dynamique) ---
+// --- 4. SAUVEGARDE & CHARGEMENT (localStorage) ---
+function saveGame() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function loadGame() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return null;
+
+  try {
+    const parsed = JSON.parse(saved);
+    // Gestion du gain hors-ligne : calcule le temps passé hors du jeu
+    const offlineSeconds = (Date.now() - (parsed.lastTick || Date.now())) / 1000;
+    
+    // Recalcule le revenu avec les données chargées
+    const offlineIncomeRate = parsed.producers.reduce((sum, p) => sum + (p.count * p.incomePerSec), 0);
+    parsed.money += offlineIncomeRate * offlineSeconds;
+    parsed.lastTick = Date.now();
+    return parsed;
+  } catch (e) {
+    console.error("Erreur au chargement de la sauvegarde :", e);
+    return null;
+  }
+}
+
+// Sauvegarde automatique toutes les 5 secondes
+setInterval(saveGame, 5000);
+
+// --- 5. INTERFACE UTILISATEUR (Les Yeux) ---
 const moneyDisplay = document.getElementById("money-display");
 const cpsDisplay = document.getElementById("cps-display");
 const serveButton = document.getElementById("serve-btn");
 const producersList = document.getElementById("producers-list");
 
-// Dessine les boutons d'achats une seule fois au chargement
 function createProducerCards() {
   producersList.innerHTML = "";
 
@@ -81,23 +117,20 @@ function createProducerCards() {
       </div>
       <button class="buy-btn" id="btn-${producer.id}">
         Acheter (<span class="cost">${getCost(producer)}</span> €)
-        <span class="count">${producer.count}</span>
+        <span class="count">x${producer.count}</span>
       </button>
     `;
 
-    // Écouteur sur le bouton d'achat
     card.querySelector("button").addEventListener("click", () => buyProducer(producer.id));
-
     producersList.appendChild(card);
   });
 }
 
-// Met à jour les valeurs à l'écran
 function render() {
-  moneyDisplay.textContent = state.money;
+  // Affiche l'entier pour garder un affichage propre
+  moneyDisplay.textContent = Math.floor(state.money);
   cpsDisplay.textContent = `+${getIncomePerSecond()} € / sec`;
 
-  // Met à jour chaque bouton (prix, quantité et activation)
   state.producers.forEach(producer => {
     const cost = getCost(producer);
     const card = document.getElementById(`card-${producer.id}`);
@@ -106,15 +139,13 @@ function render() {
     if (card && btn) {
       card.querySelector(".cost").textContent = cost;
       card.querySelector(".count").textContent = `x${producer.count}`;
-      btn.disabled = state.money < cost; // Grisé si pas assez de sous
+      btn.disabled = state.money < cost;
     }
   });
 }
 
-// --- 4. INITIALISATION ---
+// --- INITIALISATION ---
 serveButton.addEventListener("click", handleClick);
 createProducerCards();
-render();
-
-// Démarre la production passive (1 fois par seconde)
-setInterval(gameLoop, 1000);
+state.lastTick = Date.now();
+requestAnimationFrame(gameLoop);
