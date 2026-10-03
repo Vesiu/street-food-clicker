@@ -199,3 +199,39 @@ header h1 {
   border-radius: 0.25rem;
   font-size: 0.8rem;
 }
+
+.shop-upgrades-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.upgrade-card {
+  background-color: #27272a;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #3f3f46;
+}
+
+.upgrade-desc {
+  font-size: 0.75rem;
+  color: #a1a1aa;
+}
+
+.buy-upgrade-btn {
+  background-color: #f59e0b; /* Jaune ambré pour les upgrades */
+  color: #000;
+  font-weight: 700;
+  border: none;
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.buy-upgrade-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
